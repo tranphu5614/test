@@ -1,0 +1,23 @@
+# docker-compose.yml
+
+version: '3.8'
+
+services:
+  # Define our main service, which we'll call 'api'
+  api:
+    # Tell Docker Compose to build the image from the Dockerfile in the current directory
+    build: .
+
+    # Give our container a friendly name
+    container_name: ai_call_center_api
+
+    # Map port 8000 inside the container to port 8000 on our host machine.
+    # Format is "HOST:CONTAINER"
+    ports:
+      - "8000:8000"
+
+    # This ensures that any local changes to the code are reflected
+    # inside the container without needing to rebuild the image (great for development).
+    # For production, you would remove this.
+    volumes:
+      - .:/app
