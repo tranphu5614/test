@@ -4,6 +4,7 @@ import shutil
 import asyncio
 from fastapi import FastAPI, HTTPException, BackgroundTasks, File, UploadFile, Request
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware  
 from typing import Dict, Any, List
 import os
 
@@ -26,6 +27,18 @@ JOBS_DB: Dict[str, Job] = {}
 
 # --- Initialize Application and Clients ---
 app = FastAPI(title="AI Call Center Analysis API", version="1.0.0")
+
+# --- NEW: Cấu hình CORS ---
+# Cho phép mọi nguồn (origin) truy cập API để dễ dàng phát triển.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+# ---------------------------
+
 stt_client = AssemblyAIClient("63b43ff9e09542a0aee99d1cfc225f47")
 llm_client = GeminiClient("AIzaSyCN2N-2S7BuEHr58e5Iwq2t-8v4wxhJxQ4")
 
@@ -44,7 +57,6 @@ async def run_analysis_in_background(job_id: str, audio_urls: List[str]):
             # 1. Transcribe
             transcription = await stt_client.transcribe(audio_source=url, enable_speaker_diarization=True)
 
-            # --- CORRECTED SECTION ---
             # 2. Create the analysis tasks
             summary_task = llm_client.analyze(transcription, "summarization")
             sentiment_task = llm_client.analyze(transcription, "sentiment_analysis")
@@ -56,9 +68,8 @@ async def run_analysis_in_background(job_id: str, audio_urls: List[str]):
                 sentiment_task,
                 actions_task
             )
-            # --- END OF CORRECTION ---
 
-            # 3. Format into the AnalysisReport structure (now with real data)
+            # 3. Format into the AnalysisReport structure
             final_results.append({
                 "sourceUrl": url, "status": "SUCCESS", "errorMessage": None,
                 "transcription": transcription.__dict__,
@@ -82,7 +93,6 @@ async def run_analysis_in_background(job_id: str, audio_urls: List[str]):
 
 # --- API Endpoints ---
 
-# --- NEW: File Upload Endpoint ---
 @app.post("/v1/uploads", response_model=UploadResponse, status_code=201, response_model_by_alias=False)
 async def upload_file(request: Request, file: UploadFile = File(...)):
     """Handles uploading a local audio file."""
@@ -103,7 +113,6 @@ async def upload_file(request: Request, file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Failed to upload file: {e}")
 
 
-# --- NEW: File Serving Endpoint ---
 @app.get("/v1/files/{filename}")
 async def get_uploaded_file(filename: str):
     """Serves a file from the temporary upload directory."""
@@ -113,7 +122,6 @@ async def get_uploaded_file(filename: str):
     return FileResponse(file_path)
 
 
-# --- MODIFIED: Job Creation Endpoint ---
 @app.post("/v1/jobs", response_model=Job, status_code=202, response_model_by_alias=False)
 async def create_job(request: CreateJobRequest, background_tasks: BackgroundTasks):
     job_id = f"job_{uuid.uuid4()}"
@@ -129,7 +137,6 @@ async def create_job(request: CreateJobRequest, background_tasks: BackgroundTask
     JOBS_DB[job_id] = new_job
 
     # 3. Add the long-running analysis to the background tasks
-    #    This will start AFTER the response is sent.
     background_tasks.add_task(run_analysis_in_background, job_id, request.audioUrls)
 
     print(f"Job {job_id} created and queued. Returning 202 Accepted.")
